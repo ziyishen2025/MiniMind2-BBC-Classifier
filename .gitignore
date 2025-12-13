@@ -1,0 +1,6 @@
+model/__pycache__
+out
+docs-minimind/
+dataset/*.jsonl
+dataset/*.csv
+checkpoints/*.pth
