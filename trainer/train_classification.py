@@ -84,10 +84,10 @@ def train_epoch(epoch, loader, iters, start_step=0, wandb=None):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="MiniMind Full SFT")
+    parser = argparse.ArgumentParser(description="MiniMind Classification")
     parser.add_argument("--save_dir", type=str, default="../out", help="模型保存目录")
     parser.add_argument(
-        "--save_weight", default="full_sft", type=str, help="保存权重的前缀名"
+        "--save_weight", default="classfication", type=str, help="保存权重的前缀名"
     )
     parser.add_argument("--epochs", type=int, default=2, help="训练轮数")
     parser.add_argument("--batch_size", type=int, default=16, help="batch size")
@@ -121,7 +121,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--data_path",
         type=str,
-        default="../dataset/sft_mini_512.jsonl",
+        default="../dataset/bbc-news-data.csv",
         help="训练数据路径",
     )
     parser.add_argument(
@@ -142,7 +142,10 @@ if __name__ == "__main__":
     )
     parser.add_argument("--use_wandb", action="store_true", help="是否使用wandb")
     parser.add_argument(
-        "--wandb_project", type=str, default="MiniMind-Full-SFT", help="wandb项目名"
+        "--wandb_project",
+        type=str,
+        default="MiniMind-Classification",
+        help="wandb项目名",
     )
     args = parser.parse_args()
 
@@ -173,7 +176,7 @@ if __name__ == "__main__":
     if args.use_wandb and is_main_process():
         import swanlab as wandb
 
-        wandb_run_name = f"MiniMind-Full-SFT-Epoch-{args.epochs}-BatchSize-{args.batch_size}-LearningRate-{args.learning_rate}"
+        wandb_run_name = f"MiniMind-Classfication-Epoch-{args.epochs}-BatchSize-{args.batch_size}-LearningRate-{args.learning_rate}"
         wandb.init(project=args.wandb_project, name=wandb_run_name)
 
     # ========== 5. 定义模型、数据、优化器 ==========
