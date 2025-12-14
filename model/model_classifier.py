@@ -4,7 +4,7 @@ import os
 from typing import Optional, List, Tuple, Union
 from transformers import PreTrainedModel
 from transformers.modeling_outputs import SequenceClassifierOutput
-from model_minimind import MiniMindModel, MiniMindConfig
+from .model_minimind import MiniMindModel, MiniMindConfig
 
 
 class Classification(PreTrainedModel):
@@ -32,44 +32,44 @@ class Classification(PreTrainedModel):
 
         self.post_init()
 
-        def forward(
-            self,
-            input_ids: Optional[torch.Tensor] = None,
-            attention_mask: Optional[torch.Tensor] = None,
-            labels: Optional[torch.Tensor] = None,
+    def forward(
+        self,
+        input_ids: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+        labels: Optional[torch.Tensor] = None,
+        **kwargs
+    ):
+
+        hidden_states, _, _ = self.model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            use_cache=False,  # 分类任务不需要 KV 缓存
             **kwargs
-        ):
+        )
 
-            hidden_states, _, _ = self.model(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                use_cache=False,  # 分类任务不需要 KV 缓存
-                **kwargs
-            )
+        sequence_output = hidden_states[:, -1, :]
 
-            sequence_output = hidden_states[:, -1, :]
+        logits = self.score(sequence_output)
 
-            logits = self.score(sequence_output)
+        loss = None
+        if labels is not None:
+            loss_fct = nn.CrossEntropyLoss()
+            loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
 
-            loss = None
-            if labels is not None:
-                loss_fct = nn.CrossEntropyLoss()
-                loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+        return SequenceClassifierOutput(
+            loss=loss,
+            logits=logits,
+            hidden_states=hidden_states,
+        )
 
-            return SequenceClassifierOutput(
-                loss=loss,
-                logits=logits,
-                hidden_states=hidden_states,
-            )
-
-        @classmethod
-        def from_pretrained(
-            cls,
-            pretrained_model_name_or_path: Optional[Union[str, os.PathLike]],
-            *model_args,
-            **kwargs
-        ):
-            kwargs["ignore_mismatched_sizes"] = True
-            return super().from_pretrained(
-                pretrained_model_name_or_path, *model_args, **kwargs
-            )
+    @classmethod
+    def from_pretrained(
+        cls,
+        pretrained_model_name_or_path: Optional[Union[str, os.PathLike]],
+        *model_args,
+        **kwargs
+    ):
+        kwargs["ignore_mismatched_sizes"] = True
+        return super().from_pretrained(
+            pretrained_model_name_or_path, *model_args, **kwargs
+        )

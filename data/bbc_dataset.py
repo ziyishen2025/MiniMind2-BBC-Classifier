@@ -6,7 +6,7 @@ import re
 
 categories = ["business", "entertainment", "politics", "sport", "tech"]
 
-tokenizer = AutoTokenizer.from_pretrained("../model/")
+minimindtokenizer = AutoTokenizer.from_pretrained("../model/")
 
 
 # 将category的name转化为标签
@@ -62,7 +62,7 @@ class BBCNewsDataset(Dataset):
         label_id = get_category_id(category_name)
 
         # 使用tokenizer将数据转化为长度为max_length的token id列和attention掩码列两个tensor
-        tokenized_data = tokenizer(
+        tokenized_data = minimindtokenizer(
             text_cleaned,
             max_length=self.max_length,
             padding="max_length",
@@ -73,11 +73,10 @@ class BBCNewsDataset(Dataset):
         input_ids = tokenized_data["input_ids"].squeeze(0)
         attention_mask = tokenized_data["attention_mask"].squeeze(0)
 
-        return {
-            "input_ids": input_ids,
-            "attention_mask": attention_mask,
-            "labels": torch.tensor(label_id, dtype=torch.long),
-        }
+        return (
+            input_ids,
+            torch.tensor(label_id, dtype=torch.long),
+        )
 
 
 if __name__ == "__main__":
