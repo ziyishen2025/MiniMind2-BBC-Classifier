@@ -1,3 +1,4 @@
+# 训练命令python train_classification.py --epochs 3 --batch_size 32 --learning_rate 2e-5 --data_path "../dataset/bbc-news-data.csv" --num_labels 5 --from_weight "full_sft" --device "cuda:0"
 import os
 import sys
 
@@ -32,7 +33,7 @@ warnings.filterwarnings("ignore")
 def train_epoch(epoch, loader, iters, start_step=0, wandb=None):
     loss_fct = nn.CrossEntropyLoss()
     start_time = time.time()
-    for step, (X, Y, loss_mask) in enumerate(loader, start=start_step + 1):
+    for step, (X, Y) in enumerate(loader, start=start_step + 1):
         X = X.to(args.device)
         Y = Y.to(args.device)
 
@@ -41,10 +42,7 @@ def train_epoch(epoch, loader, iters, start_step=0, wandb=None):
             param_group["lr"] = lr
 
         with autocast_ctx:
-            res = model(X)
-            loss = loss_fct(res.logits.view(-1, res.logits.size(-1)), Y.view(-1)).view(
-                Y.size()
-            )
+            res = model(X, labels=Y)
 
             loss = res.loss
 
@@ -183,7 +181,7 @@ if __name__ == "__main__":
     _, tokenizer = init_model(lm_config, args.from_weight, device=args.device)
     model = Classification(lm_config).to(args.device)
 
-    if args.pretrain_weight_path:
+    if args.from_weight:
         if is_main_process():
             Logger(f"加载预训练权重 {args.from_weight} 到分类模型...")
 
@@ -195,7 +193,7 @@ if __name__ == "__main__":
         if is_main_process():
             Logger("警告：未指定或找不到预训练权重，模型将从头开始随机初始化。")
 
-    train_ds = BBCNewsDataset(args.data_path, tokenizer, max_length=args.max_seq_len)
+    train_ds = BBCNewsDataset(args.data_path, 512)
     train_sampler = DistributedSampler(train_ds) if dist.is_initialized() else None
     scaler = torch.cuda.amp.GradScaler(enabled=(args.dtype == "float16"))
     optimizer = optim.AdamW(model.parameters(), lr=args.learning_rate)

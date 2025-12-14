@@ -171,7 +171,7 @@ class SkipBatchSampler(Sampler):
         return max(0, total_batches - self.skip_batches)
 
 
-def load_pretrained_weights(
+def load_sft_weights_to_classification(
     model: torch.nn.Module, weight_path: str
 ) -> torch.nn.Module:
     """
@@ -180,7 +180,7 @@ def load_pretrained_weights(
     """
 
     # 1. 加载源模型的 state_dict
-    source_state_dict = torch.load(weight_path, map_location="cpu")
+    source_state_dict = torch.load("../out/full_sft_512.pth", map_location="cpu")
     target_state_dict = model.state_dict()
     new_state_dict = {}
 
