@@ -1,4 +1,4 @@
-# 训练命令python train_classification.py --epochs 3 --batch_size 32 --learning_rate 2e-5 --data_path "../dataset/bbc-news-data.csv" --num_labels 5 --from_weight "full_sft" --device "cuda:0" --log_interval 10
+# 训练命令python train_classification.py --epochs 5 --batch_size 32 --learning_rate 2e-5 --data_path "../dataset/bbc-news-data.csv" --num_labels 5 --from_weight "full_sft" --device "cuda:0" --log_interval 10
 import os
 import sys
 
@@ -18,6 +18,7 @@ from model.model_minimind import MiniMindConfig
 from model.model_classifier import Classification
 from data.bbc_dataset import BBCNewsDataset
 from typing import Tuple
+from sklearn.metrics import confusion_matrix, f1_score, accuracy_score
 from trainer.trainer_utils import (
     get_lr,
     Logger,
@@ -82,13 +83,18 @@ def train_epoch(epoch, loader, iters, start_step=0, wandb=None):
         del X, Y, res, loss
 
 
-def evaluate(epoch: int, model, val_loader: DataLoader, args) -> Tuple[float, float]:
+def evaluate(
+    epoch: int, model, val_loader: DataLoader, args
+) -> Tuple[float, float, list[int], list[int]]:
     # 将模型设置为评估模式
     model.eval()
 
     total_loss = 0.0
     correct_predictions = 0
     total_samples = 0
+
+    all_predictions = []  # 新增：用于收集所有预测结果
+    all_true_labels = []  # 新增：用于收集所有真实标签
 
     # 确保不计算梯度，减少内存消耗，加速计算
     with torch.no_grad():
@@ -113,6 +119,9 @@ def evaluate(epoch: int, model, val_loader: DataLoader, args) -> Tuple[float, fl
             # res.logits 的形状是 (batch_size, num_labels)
             predictions = torch.argmax(res.logits, dim=-1)
 
+            all_predictions.extend(predictions.cpu().tolist())
+            all_true_labels.extend(Y.cpu().tolist())
+
             # 比较预测和真实标签，并累加正确的数量
             # 注意：如果使用了 DDP，这里计算的准确率是当前进程的，但在评估阶段 DDP 不是主要的同步问题
             correct_predictions += (predictions == Y).sum().item()
@@ -125,7 +134,7 @@ def evaluate(epoch: int, model, val_loader: DataLoader, args) -> Tuple[float, fl
     # 重新将模型设置回训练模式
     model.train()
 
-    return avg_loss, avg_accuracy
+    return avg_loss, avg_accuracy, all_true_labels, all_predictions
 
 
 if __name__ == "__main__":
@@ -315,7 +324,7 @@ if __name__ == "__main__":
         if is_main_process():
 
             # 调用我们之前编写的评估函数
-            val_loss, val_acc = evaluate(epoch, model, val_loader, args)
+            val_loss, val_acc, _, _ = evaluate(epoch, model, val_loader, args)
 
             Logger(f"Epoch {epoch+1} Avg Loss={val_loss:.6f}, Avg Acc={val_acc:.4f}")
 
@@ -384,16 +393,29 @@ if __name__ == "__main__":
             Logger("警告：未找到最佳模型，将使用最后一次训练的模型权重进行测试。")
             # 如果没有找到最佳模型，则使用循环结束后留在 model 中的最终权重。
 
-        # 2. 执行测试集评估
-        # 使用 test_loader 进行评估
-        test_loss, test_acc = evaluate(
+        test_loss, test_acc, true_labels, predictions = evaluate(
             epoch=-1,  # 传入 -1 表示这不是常规 Epoch 评估
             model=model,
             val_loader=test_loader,
             args=args,
         )
 
-        # 3. 输出最终结果
+        f1 = f1_score(true_labels, predictions, average="macro")
+        cm = confusion_matrix(true_labels, predictions)
+
         Logger(f"\n测试集性能：")
         Logger(f"Loss: {test_loss:.6f}")
         Logger(f"Accuracy: {test_acc:.4f}")
+        Logger(f"Macro F1-Score: {f1:.4f}")
+
+        Logger("\n混淆矩阵")
+
+        # class_names = ['Business', 'Entertainment', 'Politics', 'Sport', 'Tech']
+
+        # 打印矩阵
+        Logger(f"\n{cm}")
+
+        # 提示用户进一步分析混淆矩阵
+        Logger(
+            "\n混淆矩阵对角线上的值是正确分类的数量。非对角线的值是错误分类的数量。(i, j)元素表示标签i被分类为j的数量"
+        )

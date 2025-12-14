@@ -10,7 +10,7 @@ class MiniMindConfig(PretrainedConfig):
 
     def __init__(
         self,
-        dropout: float = 0.0,
+        dropout: float = 0.05,
         bos_token_id: int = 1,
         eos_token_id: int = 2,
         hidden_act: str = "silu",
