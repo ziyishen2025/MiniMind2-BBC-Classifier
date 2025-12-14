@@ -1,6 +1,7 @@
 """
 训练工具函数集合
 """
+
 import gc
 import os
 import random
@@ -23,7 +24,7 @@ def Logger(content):
 
 
 def get_lr(current_step, total_steps, lr):
-    return lr*(0.1 + 0.45*(1 + math.cos(math.pi * current_step / total_steps)))
+    return lr * (0.1 + 0.45 * (1 + math.cos(math.pi * current_step / total_steps)))
 
 
 def init_distributed_mode():
@@ -45,38 +46,54 @@ def setup_seed(seed: int):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-def lm_checkpoint(lm_config, weight='full_sft', model=None, optimizer=None, epoch=0, step=0, wandb=None, save_dir='../checkpoints', **kwargs):
+
+def lm_checkpoint(
+    lm_config,
+    weight="full_sft",
+    model=None,
+    optimizer=None,
+    epoch=0,
+    step=0,
+    wandb=None,
+    save_dir="../checkpoints",
+    **kwargs,
+):
     os.makedirs(save_dir, exist_ok=True)
-    moe_path = '_moe' if lm_config.use_moe else ''
-    ckp_path = f'{save_dir}/{weight}_{lm_config.hidden_size}{moe_path}.pth'
-    resume_path = f'{save_dir}/{weight}_{lm_config.hidden_size}{moe_path}_resume.pth'
+    moe_path = "_moe" if lm_config.use_moe else ""
+    ckp_path = f"{save_dir}/{weight}_{lm_config.hidden_size}{moe_path}.pth"
+    resume_path = f"{save_dir}/{weight}_{lm_config.hidden_size}{moe_path}_resume.pth"
 
     if model is not None:
         from torch.nn.parallel import DistributedDataParallel
-        state_dict = model.module.state_dict() if isinstance(model, DistributedDataParallel) else model.state_dict()
+
+        state_dict = (
+            model.module.state_dict()
+            if isinstance(model, DistributedDataParallel)
+            else model.state_dict()
+        )
         state_dict = {k: v.half().cpu() for k, v in state_dict.items()}
-        ckp_tmp = ckp_path + '.tmp'
+        ckp_tmp = ckp_path + ".tmp"
         torch.save(state_dict, ckp_tmp)
         os.replace(ckp_tmp, ckp_path)
         wandb_id = None
         if wandb:
-            if hasattr(wandb, 'get_run'):
+            if hasattr(wandb, "get_run"):
                 run = wandb.get_run()
-                wandb_id = getattr(run, 'id', None) if run else None
+                wandb_id = getattr(run, "id", None) if run else None
             else:
-                wandb_id = getattr(wandb, 'id', None)
+                wandb_id = getattr(wandb, "id", None)
 
         resume_data = {
-            'model': state_dict,
-            'optimizer': optimizer.state_dict(),
-            'epoch': epoch,
-            'step': step,
-            'world_size': dist.get_world_size() if dist.is_initialized() else 1,
-            'wandb_id': wandb_id
+            "model": state_dict,
+            "optimizer": optimizer.state_dict(),
+            "epoch": epoch,
+            "step": step,
+            "world_size": dist.get_world_size() if dist.is_initialized() else 1,
+            "wandb_id": wandb_id,
         }
         for key, value in kwargs.items():
             if value is not None:
-                if hasattr(value, 'state_dict'):
+                if hasattr(value, "state_dict"):
                     if isinstance(value, DistributedDataParallel):
                         resume_data[key] = value.module.state_dict()
                     else:
@@ -84,7 +101,7 @@ def lm_checkpoint(lm_config, weight='full_sft', model=None, optimizer=None, epoc
                 else:
                     resume_data[key] = value
 
-        resume_tmp = resume_path + '.tmp'
+        resume_tmp = resume_path + ".tmp"
         torch.save(resume_data, resume_tmp)
         os.replace(resume_tmp, resume_path)
         del state_dict, resume_data
@@ -92,27 +109,39 @@ def lm_checkpoint(lm_config, weight='full_sft', model=None, optimizer=None, epoc
         torch.cuda.empty_cache()
     else:  # 加载模式
         if os.path.exists(resume_path):
-            ckp_data = torch.load(resume_path, map_location='cpu')
-            saved_ws = ckp_data.get('world_size', 1)
+            ckp_data = torch.load(resume_path, map_location="cpu")
+            saved_ws = ckp_data.get("world_size", 1)
             current_ws = dist.get_world_size() if dist.is_initialized() else 1
             if saved_ws != current_ws:
-                ckp_data['step'] = ckp_data['step'] * saved_ws // current_ws
-                Logger(f'GPU数量变化({saved_ws}→{current_ws})，step已自动转换为{ckp_data["step"]}')
+                ckp_data["step"] = ckp_data["step"] * saved_ws // current_ws
+                Logger(
+                    f'GPU数量变化({saved_ws}→{current_ws})，step已自动转换为{ckp_data["step"]}'
+                )
             return ckp_data
         return None
 
 
-def init_model(lm_config, from_weight='pretrain', tokenizer_path='../model', save_dir='../out', device='cuda'):
+def init_model(
+    lm_config,
+    from_weight="pretrain",
+    tokenizer_path="../model",
+    save_dir="../out",
+    device="cuda",
+):
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
     model = MiniMindForCausalLM(lm_config)
 
-    if from_weight!= 'none':
-        moe_suffix = '_moe' if lm_config.use_moe else ''
-        weight_path = f'{save_dir}/{from_weight}_{lm_config.hidden_size}{moe_suffix}.pth'
+    if from_weight != "none":
+        moe_suffix = "_moe" if lm_config.use_moe else ""
+        weight_path = (
+            f"{save_dir}/{from_weight}_{lm_config.hidden_size}{moe_suffix}.pth"
+        )
         weights = torch.load(weight_path, map_location=device)
         model.load_state_dict(weights, strict=False)
 
-    Logger(f'所加载Model可训练参数：{sum(p.numel() for p in model.parameters() if p.requires_grad) / 1e6:.3f} 百万')
+    Logger(
+        f"所加载Model可训练参数：{sum(p.numel() for p in model.parameters() if p.requires_grad) / 1e6:.3f} 百万"
+    )
     return model.to(device), tokenizer
 
 
@@ -141,3 +170,34 @@ class SkipBatchSampler(Sampler):
         total_batches = (len(self.sampler) + self.batch_size - 1) // self.batch_size
         return max(0, total_batches - self.skip_batches)
 
+
+def load_pretrained_weights(
+    model: torch.nn.Module, weight_path: str
+) -> torch.nn.Module:
+    """
+    加载预训练 SFT 模型的权重到新的分类模型中。
+    它会跳过 lm_head 的权重，确保分类头是随机初始化的。
+    """
+
+    # 1. 加载源模型的 state_dict
+    source_state_dict = torch.load(weight_path, map_location="cpu")
+    target_state_dict = model.state_dict()
+    new_state_dict = {}
+
+    for k, v in source_state_dict.items():
+        # 排除用于序列生成的头部权重 (lm_head)
+        if "lm_head" in k:
+            continue
+
+        # 匹配核心 Transformer 层的权重
+        if k in target_state_dict:
+            new_state_dict[k] = v
+        # 处理 DDP 带来的 'module.' 前缀
+        elif k.startswith("module.") and k[7:] in target_state_dict:
+            new_state_dict[k[7:]] = v
+
+    # 2. 加载权重
+    # strict=False 允许 state_dict 中缺少键 (即目标模型的 self.score 权重)
+    model.load_state_dict(new_state_dict, strict=False)
+
+    return model
